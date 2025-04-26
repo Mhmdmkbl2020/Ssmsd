@@ -1,4 +1,4 @@
-name: Build PDF Auto-Sender Service
+name: Build PDF Auto-Sender
 
 on:
   push:
@@ -19,13 +19,18 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Firefox
-      uses: GabrielBB/setup-firefox@v1
-      with:
-        firefox-version: 'latest'
+    - name: Install Firefox manually
+      run: |
+        Invoke-WebRequest "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US" -OutFile firefox.exe
+        Start-Process -Wait -FilePath .\firefox.exe -ArgumentList "/S"
+        Remove-Item firefox.exe
 
     - name: Install GeckoDriver
-      uses: nanasess/setup-geckodriver@v1
+      run: |
+        $geckoVersion = (Invoke-RestMethod "https://api.github.com/repos/mozilla/geckodriver/releases/latest").tag_name
+        Invoke-WebRequest "https://github.com/mozilla/geckodriver/releases/download/$geckoVersion/geckodriver-$geckoVersion-win64.zip" -OutFile geckodriver.zip
+        Expand-Archive geckodriver.zip -DestinationPath .
+        Rename-Item geckodriver.exe geckodriver.exe
 
     - name: Install dependencies
       run: |
@@ -39,7 +44,6 @@ jobs:
           --add-data "geckodriver.exe;." `
           --add-data "sms;sms" `
           --add-data "whatsapp;whatsapp" `
-          --hidden-import selenium.webdriver.firefox.service `
           main.py
 
     - name: Upload artifact
