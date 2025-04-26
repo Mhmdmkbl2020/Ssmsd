@@ -1,4 +1,8 @@
-PyPDF2
-watchdog
-selenium
-pyserial
+PyPDF2==3.0.1
+watchdog==3.0.0
+selenium==4.9.1
+pyserial==3.5
+pyinstaller==5.13.0
+python-dateutil==2.8.2
+urllib3==1.26.16
+webdriver-manager==3.8.6
