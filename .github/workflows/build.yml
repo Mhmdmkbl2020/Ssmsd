@@ -10,88 +10,54 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Set up Python 3.8
+    - name: Set up Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: '3.8'
+        python-version: '3.10'
         architecture: 'x64'
 
-    - name: Cache dependencies
-      uses: actions/cache@v3
+    - name: Install Chrome
+      uses: browser-actions/setup-chrome@v1
       with:
-        path: |
-          ~\AppData\Local\pip\Cache
-          venv
-        key: ${{ runner.os }}-py-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-py-
+        chrome-version: 'stable'
 
-    - name: Install system dependencies
+    - name: Auto Install ChromeDriver
       run: |
-        choco install googlechrome -y
-        refreshenv
-
-    - name: Setup ChromeDriver
-      run: |
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $chromeVersion = (Get-Item (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe').'(Default)').VersionInfo.ProductVersion
-        $chromeDriverUrl = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$($chromeVersion.Split('.')[0..2] -join '.')"
-        $chromeDriverVersion = Invoke-RestMethod -Uri $chromeDriverUrl
-        Invoke-WebRequest "https://chromedriver.storage.googleapis.com/$chromeDriverVersion/chromedriver_win32.zip" -OutFile chromedriver.zip
+        $driverVersion = Invoke-RestMethod -Uri "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$($chromeVersion.Split('.')[0..2] -join '.')"
+        Invoke-WebRequest "https://chromedriver.storage.googleapis.com/$driverVersion/chromedriver_win32.zip" -OutFile chromedriver.zip
         Expand-Archive chromedriver.zip -DestinationPath .
-        Rename-Item chromedriver.exe chromedriver.exe
-
-    - name: Install Python dependencies
+        
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install virtualenv
-        virtualenv venv
-        venv\Scripts\activate
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Create necessary folders
+    - name: Build executable
       run: |
-        New-Item -ItemType Directory -Force -Path sms, whatsapp, logs
-
-    - name: Build executable with PyInstaller
-      run: |
-        venv\Scripts\activate
-        pyinstaller --noconfirm --onefile --name PDF_Auto_Sender `
+        pyinstaller --onefile --name PDFAutoSender `
           --add-data "chromedriver.exe;." `
           --add-data "sms;sms" `
           --add-data "whatsapp;whatsapp" `
           --hidden-import PyPDF2 `
           --hidden-import watchdog.events `
           --hidden-import selenium.webdriver.chrome.service `
-          --hidden-import serial `
-          --runtime-tmpdir . `
-          --log-level WARN `
           main.py
 
-    - name: Archive output
+    - name: Upload Artifact
       uses: actions/upload-artifact@v3
       with:
-        name: PDF_Auto_Sender-Package
+        name: PDFAutoSender-Package
         path: |
-          dist/PDF_Auto_Sender.exe
+          dist/PDFAutoSender.exe
           chromedriver.exe
           sms/
           whatsapp/
-          config.ini
-        retention-days: 7
-
-    - name: Upload release assets
-      if: github.event_name == 'release'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          dist/PDF_Auto_Sender.exe
-          chromedriver.exe
