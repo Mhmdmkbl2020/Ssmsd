@@ -6,6 +6,3 @@ pyinstaller==5.13.0
 python-dateutil==2.8.2
 urllib3==1.26.16
 webdriver-manager==3.8.6
-pywin32==306
-pycryptodome==3.20.0
-webdriver-manager==3.8.6
