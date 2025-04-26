@@ -15,126 +15,91 @@ from webdriver_manager.chrome import ChromeDriverManager
 # إعداد نظام التسجيل
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/app.log'),
-        logging.StreamHandler()
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
     ]
 )
 
-def resource_path(relative_path):
-    """ حل مشكلة مسارات الملفات عند التجميع """
-    try:
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.dirname(__file__)
-    return os.path.join(base_path, relative_path)
-
 class PDFHandler(FileSystemEventHandler):
-    """ معالج أحداث نظام الملفات للمجلدات المراقبة """
-    def on_created(self, event):
+    def __init__(self):
+        self.driver = None
+        self.init_browser()
+
+    def init_browser(self):
         try:
-            if not event.is_directory and event.src_path.lower().endswith('.pdf'):
-                logging.info(f'تم اكتشاف ملف جديد: {event.src_path}')
-                self.process_pdf(event.src_path)
+            service = Service(ChromeDriverManager().install())
+            options = webdriver.ChromeOptions()
+            options.add_argument("--headless=new")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.get('https://web.whatsapp.com')
+            time.sleep(15)  # وقت لمسح QR code
         except Exception as e:
-            logging.error(f'خطأ في معالجة الحدث: {str(e)}')
+            logging.error(f"فشل في تهيئة المتصفح: {str(e)}")
 
-    def process_pdf(self, file_path):
-        """ معالجة ملف PDF واستخراج المعلومات """
+    def on_created(self, event):
+        if not event.is_directory and event.src_path.endswith('.pdf'):
+            logging.info(f'تم اكتشاف ملف جديد: {event.src_path}')
+            self.process_file(event.src_path)
+
+    def process_file(self, file_path):
         try:
-            # استخراج النص من PDF
-            with open(file_path, 'rb') as file:
-                reader = PdfReader(file)
+            with open(file_path, 'rb') as f:
+                reader = PdfReader(f)
                 text = '\n'.join(page.extract_text() or '' for page in reader.pages)
-
-            # تحليل المحتوى
+            
             lines = [line.strip() for line in text.split('\n') if line.strip()]
             if len(lines) < 2:
-                raise ValueError('الملف لا يحتوي على معلومات كافية')
+                raise ValueError("تنسيق الملف غير صحيح")
             
-            phone_number = lines[0]
+            number = lines[0]
             message = '\n'.join(lines[1:])
-
-            # إرسال الرسائل
-            self.send_sms(phone_number, message)
-            self.send_whatsapp(phone_number, file_path)
-
-            # تنظيف الملف
+            
+            self.send_sms(number, message)
+            self.send_whatsapp(file_path, number)
+            
             os.remove(file_path)
-            logging.info(f'تم معالجة الملف بنجاح: {os.path.basename(file_path)}')
-
+            logging.info(f"تمت معالجة الملف: {os.path.basename(file_path)}")
+            
         except Exception as e:
-            logging.error(f'خطأ في معالجة الملف {file_path}: {str(e)}')
-            os.rename(file_path, os.path.join('failed', os.path.basename(file_path)))
+            logging.error(f"خطأ في المعالجة: {str(e)}")
+            os.rename(file_path, f"failed_{os.path.basename(file_path)}")
 
     def send_sms(self, number, message):
-        """ إرسال SMS عبر منفذ COM """
         try:
-            with serial.Serial(
-                port='COM3',
-                baudrate=9600,
-                timeout=1
-            ) as modem:
+            with serial.Serial('COM3', 9600, timeout=1) as modem:
                 modem.write(b'AT+CMGF=1\r')
                 modem.write(f'AT+CMGS="{number}"\r'.encode('utf-8'))
                 modem.write(message.encode('utf-8') + b'\x1A')
-                logging.info(f'تم إرسال SMS إلى {number}')
+                logging.info(f"تم إرسال SMS إلى {number}")
         except Exception as e:
-            logging.error(f'فشل إرسال SMS: {str(e)}')
+            logging.error(f"فشل إرسال SMS: {str(e)}")
 
-    def send_whatsapp(self, number, file_path):
-        """ إرسال ملف عبر WhatsApp Web """
+    def send_whatsapp(self, file_path, number):
         try:
-            # إعداد المتصفح مع WebDriver Manager
-            service = Service(ChromeDriverManager().install())
-            options = webdriver.ChromeOptions()
-            options.add_argument('--disable-gpu')
-            options.add_argument('--no-sandbox')
-            
-            driver = webdriver.Chrome(service=service, options=options)
-            driver.get('https://web.whatsapp.com')
-            
-            # انتظار مسح QR code
-            input('الرجاء مسح رمز QR ثم الضغط على Enter...')
-            
-            # البحث عن الرقم
-            search_box = driver.find_element(By.XPATH, '//div[@contenteditable="true"][@data-tab="3"]')
-            search_box.send_keys(number + Keys.ENTER)
-            
-            # إرفاق الملف
-            attach_btn = driver.find_element(By.XPATH, '//span[@data-icon="clip"]')
-            attach_btn.click()
-            
-            file_input = driver.find_element(By.XPATH, '//input[@type="file"]')
-            file_input.send_keys(os.path.abspath(file_path))
-            
-            # إرسال الملف
-            send_btn = driver.find_element(By.XPATH, '//span[@data-icon="send"]')
-            send_btn.click()
-            time.sleep(5)
-            
-            logging.info(f'تم الإرسال إلى {number} عبر WhatsApp')
-            
+            self.driver.find_element(By.XPATH, '//div[@contenteditable="true"][@data-tab="3"]').send_keys(number + Keys.ENTER)
+            self.driver.find_element(By.XPATH, '//span[@data-icon="clip"]').click()
+            self.driver.find_element(By.XPATH, '//input[@type="file"]').send_keys(os.path.abspath(file_path))
+            self.driver.find_element(By.XPATH, '//span[@data-icon="send"]').click()
+            time.sleep(3)
+            logging.info(f"تم الإرسال عبر واتساب إلى {number}")
         except Exception as e:
-            logging.error(f'فشل إرسال WhatsApp: {str(e)}')
-        finally:
-            if 'driver' in locals():
-                driver.quit()
+            logging.error(f"فشل إرسال واتساب: {str(e)}")
+            self.init_browser()
 
-def monitor_folders():
-    """ بدء مراقبة المجلدات """
-    folders = ['sms', 'whatsapp']
+def main():
+    for folder in ['sms', 'whatsapp']:
+        os.makedirs(folder, exist_ok=True)
+    
+    event_handler = PDFHandler()
     observer = Observer()
-    
-    for folder in folders:
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        event_handler = PDFHandler()
-        observer.schedule(event_handler, folder, recursive=False)
-        logging.info(f'بدأت المراقبة على مجلد: {folder}')
-    
+    observer.schedule(event_handler, 'sms', recursive=False)
+    observer.schedule(event_handler, 'whatsapp', recursive=False)
     observer.start()
+    
     try:
         while True:
             time.sleep(1)
@@ -143,8 +108,4 @@ def monitor_folders():
     observer.join()
 
 if __name__ == '__main__':
-    # إنشاء المجلدات الضرورية
-    for folder in ['sms', 'whatsapp', 'logs', 'failed']:
-        os.makedirs(folder, exist_ok=True)
-    
-    monitor_folders()
+    main()
