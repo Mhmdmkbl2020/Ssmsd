@@ -1,4 +1,4 @@
-name: Build Executable Service
+name: Build PDF Auto-Sender Service
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
     - name: Checkout code
@@ -19,14 +19,13 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install ChromeDriver
-      run: |
-        $chromePath = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe').'(Default)'
-        $version = (Get-Item $chromePath).VersionInfo.ProductVersion
-        $majorVersion = $version.Split('.')[0]
-        $driverVersion = (Invoke-RestMethod "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$majorVersion")
-        Invoke-WebRequest "https://chromedriver.storage.googleapis.com/$driverVersion/chromedriver_win32.zip" -OutFile chromedriver.zip
-        Expand-Archive chromedriver.zip -DestinationPath .
+    - name: Install Firefox
+      uses: GabrielBB/setup-firefox@v1
+      with:
+        firefox-version: 'latest'
+
+    - name: Install GeckoDriver
+      uses: nanasess/setup-geckodriver@v1
 
     - name: Install dependencies
       run: |
@@ -37,9 +36,10 @@ jobs:
     - name: Build executable
       run: |
         pyinstaller --onefile --name PDFService `
-          --add-data "chromedriver.exe;." `
+          --add-data "geckodriver.exe;." `
           --add-data "sms;sms" `
           --add-data "whatsapp;whatsapp" `
+          --hidden-import selenium.webdriver.firefox.service `
           main.py
 
     - name: Upload artifact
@@ -48,4 +48,4 @@ jobs:
         name: PDFService-Package
         path: |
           dist/PDFService.exe
-          chromedriver.exe
+          geckodriver.exe
