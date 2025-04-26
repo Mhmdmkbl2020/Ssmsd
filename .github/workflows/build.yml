@@ -1,4 +1,4 @@
-name: Build PDF Auto-Sender
+name: Build PDF Service
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
     - name: Checkout code
@@ -19,18 +19,9 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Firefox manually
+    - name: Create required directories
       run: |
-        Invoke-WebRequest "https://download.mozilla.org/?product=firefox-latest&os=win64&lang=en-US" -OutFile firefox.exe
-        Start-Process -Wait -FilePath .\firefox.exe -ArgumentList "/S"
-        Remove-Item firefox.exe
-
-    - name: Install GeckoDriver
-      run: |
-        $geckoVersion = (Invoke-RestMethod "https://api.github.com/repos/mozilla/geckodriver/releases/latest").tag_name
-        Invoke-WebRequest "https://github.com/mozilla/geckodriver/releases/download/$geckoVersion/geckodriver-$geckoVersion-win64.zip" -OutFile geckodriver.zip
-        Expand-Archive geckodriver.zip -DestinationPath .
-        Rename-Item geckodriver.exe geckodriver.exe
+        New-Item -ItemType Directory -Force -Path sms, whatsapp
 
     - name: Install dependencies
       run: |
@@ -41,7 +32,6 @@ jobs:
     - name: Build executable
       run: |
         pyinstaller --onefile --name PDFService `
-          --add-data "geckodriver.exe;." `
           --add-data "sms;sms" `
           --add-data "whatsapp;whatsapp" `
           main.py
@@ -50,6 +40,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PDFService-Package
-        path: |
-          dist/PDFService.exe
-          geckodriver.exe
+        path: dist/PDFService.exe
