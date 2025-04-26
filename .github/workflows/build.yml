@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
 
     steps:
     - name: Checkout repository
@@ -23,41 +23,38 @@ jobs:
         architecture: 'x64'
 
     - name: Install Chrome
-      uses: browser-actions/setup-chrome@v1
+      uses: actions/setup-chrome@v2
       with:
         chrome-version: 'stable'
 
     - name: Auto Install ChromeDriver
       run: |
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $chromeVersion = (Get-Item (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe').'(Default)').VersionInfo.ProductVersion
-        $driverVersion = Invoke-RestMethod -Uri "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$($chromeVersion.Split('.')[0..2] -join '.')"
+        $driverVersion = (Invoke-RestMethod "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$($chromeVersion.Split('.')[0..2] -join '.')")
         Invoke-WebRequest "https://chromedriver.storage.googleapis.com/$driverVersion/chromedriver_win32.zip" -OutFile chromedriver.zip
         Expand-Archive chromedriver.zip -DestinationPath .
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pyinstaller==5.13.0
 
     - name: Build executable
       run: |
-        pyinstaller --onefile --name PDFAutoSender `
+        pyinstaller --onefile --name PDFSender `
           --add-data "chromedriver.exe;." `
           --add-data "sms;sms" `
           --add-data "whatsapp;whatsapp" `
-          --hidden-import PyPDF2 `
           --hidden-import watchdog.events `
-          --hidden-import selenium.webdriver.chrome.service `
           main.py
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: PDFAutoSender-Package
+        name: PDFSender-Package
         path: |
-          dist/PDFAutoSender.exe
+          dist/PDFSender.exe
           chromedriver.exe
           sms/
           whatsapp/
