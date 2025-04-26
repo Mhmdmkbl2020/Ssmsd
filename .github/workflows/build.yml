@@ -23,7 +23,7 @@ jobs:
       run: |
         $chromePath = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe').'(Default)'
         $version = (Get-Item $chromePath).VersionInfo.ProductVersion
-        $majorVersion = $version.Substring(0, $version.LastIndexOf('.'))
+        $majorVersion = $version.Split('.')[0]
         $driverVersion = (Invoke-RestMethod "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$majorVersion")
         Invoke-WebRequest "https://chromedriver.storage.googleapis.com/$driverVersion/chromedriver_win32.zip" -OutFile chromedriver.zip
         Expand-Archive chromedriver.zip -DestinationPath .
