@@ -30,7 +30,7 @@ logging.basicConfig(
 class PDFService(win32serviceutil.ServiceFramework):
     _svc_name_ = "PDFAutoSender"
     _svc_display_name_ = "PDF Auto Sender Service"
-    _svc_description_ = "Automatically processes PDF files and sends notifications via SMS and WhatsApp"
+    _svc_description_ = "معالجة تلقائية لملفات PDF وإرسال الإشعارات"
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
@@ -51,27 +51,33 @@ class PDFService(win32serviceutil.ServiceFramework):
         self.start_monitoring()
 
     def initialize_services(self):
+        """تهيئة متصفح Firefox في الخلفية"""
         try:
             options = Options()
+            options.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'
             options.add_argument("--headless")
+            options.set_preference("dom.webnotifications.enabled", False)
+            
             service = Service(GeckoDriverManager().install())
             self.driver = webdriver.Firefox(service=service, options=options)
             self.driver.get("https://web.whatsapp.com")
-            logging.info("تم تهيئة متصفح Firefox بنجاح")
-            time.sleep(30)  # وقت لمسح QR code
+            logging.info("تم تهيئة المتصفح بنجاح")
+            time.sleep(30)  # وقت كافٍ لمسح QR code
         except Exception as e:
-            logging.error(f"فشل في تهيئة المتصفح: {str(e)}")
+            logging.error(f"خطأ في تهيئة المتصفح: {str(e)}")
 
     class PDFHandler(FileSystemEventHandler):
         def __init__(self, outer):
             self.outer = outer
 
         def on_created(self, event):
+            """معالجة الملفات الجديدة"""
             if not event.is_directory and event.src_path.lower().endswith('.pdf'):
                 logging.info(f"تم اكتشاف ملف جديد: {event.src_path}")
                 self.process_file(event.src_path)
 
         def process_file(self, file_path):
+            """استخراج المعلومات وإرسالها"""
             try:
                 with open(file_path, 'rb') as f:
                     reader = PdfReader(f)
@@ -94,6 +100,7 @@ class PDFService(win32serviceutil.ServiceFramework):
                 os.rename(file_path, f"failed_{os.path.basename(file_path)}")
 
         def send_sms(self, number, message):
+            """إرسال SMS عبر المنفذ التسلسلي"""
             try:
                 with serial.Serial('COM3', 9600, timeout=1) as modem:
                     modem.write(b'AT+CMGF=1\r')
@@ -104,18 +111,21 @@ class PDFService(win32serviceutil.ServiceFramework):
                 logging.error(f"فشل إرسال SMS: {str(e)}")
 
         def send_whatsapp(self, file_path, number):
+            """إرسال ملف عبر واتساب ويب"""
             try:
                 self.outer.driver.find_element(By.XPATH, '//div[@role="textbox"]').send_keys(number + Keys.ENTER)
                 self.outer.driver.find_element(By.XPATH, '//div[@title="إرفاق"]').click()
-                self.outer.driver.find_element(By.XPATH, '//input[@type="file"]').send_keys(os.path.abspath(file_path))
+                file_input = self.outer.driver.find_element(By.XPATH, '//input[@type="file"]')
+                file_input.send_keys(os.path.abspath(file_path))
                 time.sleep(2)
                 self.outer.driver.find_element(By.XPATH, '//div[@aria-label="إرسال"]').click()
-                logging.info(f"تم الإرسال عبر واتساب إلى {number}")
+                logging.info(f"تم الإرسال إلى {number} عبر واتساب")
             except Exception as e:
                 logging.error(f"فشل إرسال واتساب: {str(e)}")
                 self.outer.initialize_services()
 
     def start_monitoring(self):
+        """بدء مراقبة المجلدات"""
         for folder in ['sms', 'whatsapp']:
             os.makedirs(folder, exist_ok=True)
 
@@ -124,7 +134,7 @@ class PDFService(win32serviceutil.ServiceFramework):
         self.observer.schedule(event_handler, 'sms', recursive=False)
         self.observer.schedule(event_handler, 'whatsapp', recursive=False)
         self.observer.start()
-        logging.info("بدأت الخدمة بنجاح")
+        logging.info("بدأت المراقبة التلقائية")
 
         while True:
             time.sleep(10)
